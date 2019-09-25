@@ -161,6 +161,19 @@ class AuthenticationManager(object):
 
         return requests.Request('GET', base_url, params=params).prepare().url
 
+    def send_request(self, prepared_request, *args, **kwargs):
+        """
+        Send a prepared request
+
+        Args:
+            prepared_request (requests.PreparedRequest): Prepared request to send
+
+        Returns:
+            requests.Response: Response of HTTP request
+        """
+
+        return self.session.send(prepared_request, *args, **kwargs)
+
     def authenticate(self, do_refresh=True):
         """
         Authenticate with Xbox Live using either tokens or user credentials.
@@ -246,11 +259,17 @@ class AuthenticationManager(object):
             raise AuthenticationException("Not authenticated with Windows Live, please do that first, "
                                           "before attempting a service authentication")
 
-        response = self.session.get(authorization_url, allow_redirects=False)
+        req = requests.Request('GET', authorization_url)
+        prepped = self.session.prepare_request(req)
+
+        response = self.send_request(prepped, allow_redirects=False)
         if response.status_code != 302:
             raise AuthenticationException("Failed to authenticate with partner service")
 
-        return self.session.get(response.headers['Location'])
+        req = requests.Request('GET', response.headers['Location'])
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped)
 
     @staticmethod
     def extract_js_object(body, obj_name):
@@ -459,7 +478,11 @@ class AuthenticationManager(object):
         """
 
         authorization_url = AuthenticationManager.generate_authorization_url()
-        resp = self.session.get(authorization_url, allow_redirects=False)
+
+        req = requests.Request('GET', authorization_url)
+        prepped = self.session.prepare_request(req)
+
+        resp = self.send_request(prepped, allow_redirects=False)
 
         if resp.status_code == 302 and \
            resp.headers['Location'].startswith('https://login.live.com/oauth20_desktop.srf'):
@@ -489,7 +512,12 @@ class AuthenticationManager(object):
             'isFidoSupported': False,
             'flowToken': ppft
         }
-        resp = self.session.post(credential_type_url, json=post_data, headers=dict(Referer=resp.url))
+        req = requests.Request('POST', credential_type_url, json=post_data,
+                               headers=dict(Referer=resp.url))
+        prepped = self.session.prepare_request(req)
+
+        resp = self.send_request(prepped)
+
         credential_type = resp.json()
 
         post_data = {
@@ -513,7 +541,11 @@ class AuthenticationManager(object):
                 'psRNGCDefaultType': ngc_params['DefaultType']
             })
 
-        return self.session.post(server_data.get('urlPost'), data=post_data, allow_redirects=False)
+        req = requests.Request('POST', server_data.get('urlPost'),
+                               data=post_data)
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped, allow_redirects=False)
 
     def __window_live_token_refresh_request(self, refresh_token):
         """
@@ -533,7 +565,10 @@ class AuthenticationManager(object):
             'refresh_token': refresh_token.jwt,
         }
 
-        return self.session.get(base_url, params=params)
+        req = requests.Request('GET', base_url, params=params)
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped)
 
     def __xbox_live_authenticate_request(self, access_token):
         """
@@ -557,7 +592,10 @@ class AuthenticationManager(object):
             }
         }
 
-        return self.session.post(url, json=data, headers=headers)
+        req = requests.Request('POST', url, json=data, headers=headers)
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped)
 
     def __xbox_live_authorize_request(self, user_token, device_token=None, title_token=None):
         """
@@ -587,7 +625,10 @@ class AuthenticationManager(object):
         if title_token:
             data["Properties"].update({"TitleToken": title_token.jwt})
 
-        return self.session.post(url, json=data, headers=headers)
+        req = requests.Request('POST', url, json=data, headers=headers)
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped)
 
     def __title_authenticate_request(self, device_token, access_token):
         """
@@ -615,7 +656,10 @@ class AuthenticationManager(object):
             }
         }
 
-        return self.session.post(url, json=data, headers=headers)
+        req = requests.Request('POST', url, json=data, headers=headers)
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped)
 
     def __device_authenticate_request(self, access_token):
         """
@@ -625,7 +669,7 @@ class AuthenticationManager(object):
             access_token (:class:`AccessToken`): Access token
 
         Returns:
-            requests.Response: Response of HTTP-POST`
+            requests.Response: Response of HTTP-POST
         """
         url = "https://device.auth.xboxlive.com/device/authenticate"
         headers = {"x-xbl-contract-version": "1"}
@@ -639,4 +683,7 @@ class AuthenticationManager(object):
             }
         }
 
-        return self.session.post(url, json=data, headers=headers)
+        req = requests.Request('POST', url, json=data, headers=headers)
+        prepped = self.session.prepare_request(req)
+
+        return self.send_request(prepped)
