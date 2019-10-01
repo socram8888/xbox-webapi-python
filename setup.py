@@ -38,7 +38,8 @@ setup(
         'requests',
         'demjson',
         'appdirs',
-        'urwid'
+        'urwid',
+        'jwcrypto'
     ],
     setup_requires=['pytest-runner'],
     tests_require=[

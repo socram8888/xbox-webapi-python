@@ -5,6 +5,7 @@ Authenticate with Windows Live Server and Xbox Live.
 In case Two-Factor authentication is requested from provided account,
 the user is asked for input via standard-input.
 """
+
 import re
 import json
 import logging
@@ -16,6 +17,7 @@ from urllib.parse import urlparse, parse_qs
 
 from xbox.webapi.authentication.token import Token
 from xbox.webapi.authentication.token import AccessToken, RefreshToken, UserToken, DeviceToken, TitleToken, XSTSToken
+from xbox.webapi.common.signing import JwkKeyProvider
 from xbox.webapi.common.exceptions import AuthenticationException, TwoFactorAuthRequired
 from xbox.webapi.common.userinfo import XboxLiveUserInfo
 
@@ -28,6 +30,7 @@ class AuthenticationManager(object):
         Initialize an instance of :class:`AuthenticationManager`
         """
         self.session = requests.session()
+        self.signkey_provider = JwkKeyProvider()
 
         self.email_address = None
         self.password = None
@@ -104,7 +107,7 @@ class AuthenticationManager(object):
         Save tokens and userinfo as json file
 
         Args:
-            ts (object): Instance of :class:`Tokenstore`
+            filepath (str): Filepath to save tokens
 
         Returns:
             None
@@ -161,7 +164,7 @@ class AuthenticationManager(object):
 
         return requests.Request('GET', base_url, params=params).prepare().url
 
-    def send_request(self, prepared_request, *args, **kwargs):
+    def send_request(self, prepared_request, **kwargs):
         """
         Send a prepared request
 
@@ -171,8 +174,7 @@ class AuthenticationManager(object):
         Returns:
             requests.Response: Response of HTTP request
         """
-
-        return self.session.send(prepared_request, *args, **kwargs)
+        return self.session.send(prepared_request, **kwargs)
 
     def authenticate(self, do_refresh=True):
         """
