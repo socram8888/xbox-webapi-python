@@ -407,7 +407,7 @@ class JwkKeyProvider(object):
             bytes: Data signature
         """
         if not isinstance(private_key, ec.EllipticCurvePrivateKey):
-            raise exceptions.InvalidKey('Cannot use other than private key to sign data')
+            raise exceptions.InvalidKey('Cannot use other than private key to sign data. Got {}'.format(type(private_key)))
 
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
         return private_key.sign(data, ec.ECDSA(hash_instance))
@@ -431,8 +431,8 @@ class JwkKeyProvider(object):
         elif isinstance(key, ec.EllipticCurvePrivateKey):
             pubkey = key.public_key()
         else:
-            raise TypeError('Invalid key provided!'
-                            'Supporting: EllipticCurvePublicKey/EllipticCurvePrivateKey')
+            raise TypeError('Invalid key provided, got type: {}! '
+                            'Supported: EllipticCurvePublicKey/EllipticCurvePrivateKey'.format(type(key)))
 
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
         try:

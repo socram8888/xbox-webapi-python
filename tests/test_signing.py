@@ -1,3 +1,4 @@
+import binascii
 import base64
 import pytest
 
@@ -14,7 +15,7 @@ def test_assemble_header(signature_datetime):
     assert header_data == b'\x00\x00\x00\x01\x01\xd2\xfc\x4a\x7c\xe0\x00\x00'
 
 
-def test_assemble_signature(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
+def test_assemble_signature_data(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
     http_request = sample_xboxlive_auth_request
     key = JwkKeyProvider.deserialize_der_private_key(secp256r1_der_privkey)
 
@@ -34,7 +35,7 @@ def test_assemble_signature(secp256r1_der_privkey, signature_datetime, sample_xb
                                               b'XV0aC54Ym94bGl2ZS5jb20iLCJScHNUaWNrZXQiOiJzb21lVGlja2V0In19AA==')
 
 
-def test_sign_stuff(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
+def test_create_signature(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
     algo = SigningAlgorithmId.ES256
 
     provider = JwkKeyProvider()
@@ -48,11 +49,17 @@ def test_sign_stuff(secp256r1_der_privkey, signature_datetime, sample_xboxlive_a
     assert signature is not None
     assert isinstance(signature, bytes)
 
-    expected = base64.b64decode(b'AAAAAQHS/Ep84AAAMEYCIQC4rN7knsj/IVHPcK27DNoYw8fOtXRC'
-                                b'zdM5T3gY/HHwnwIhAKZQ6vEg+WiSzgNSKeIXhCum9TN994Eifmy+'
-                                b'tbug6vMb')
 
-    assert signature == expected
+def test_sign_data(secp256r1_der_privkey):
+    data = b'\x01\x02\x03\x04\x05\x06\x07\x08\x09\x10'
+
+    algo = SigningAlgorithmId.ES256
+    key = JwkKeyProvider.deserialize_der_private_key(secp256r1_der_privkey)
+    signature = JwkKeyProvider.sign_data(key, algo, data)
+
+    success = JwkKeyProvider.verify_signature(key, algo, signature, data)
+
+    assert success is True
 
 
 def test_signature_verification(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
