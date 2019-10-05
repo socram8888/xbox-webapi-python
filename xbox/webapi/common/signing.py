@@ -10,6 +10,7 @@ import base64
 from datetime import datetime
 from enum import Enum
 
+from cryptography import exceptions
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -406,8 +407,7 @@ class JwkKeyProvider(object):
             bytes: Data signature
         """
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
-        ecdsa = ec.ECDSA(hash_instance)
-        return private_key.sign(data, ecdsa)
+        return private_key.sign(data, ec.ECDSA(hash_instance))
 
     @staticmethod
     def verify_signature(key, algorithm_id, signature, data):
@@ -432,7 +432,12 @@ class JwkKeyProvider(object):
                             'Supporting: EllipticCurvePublicKey/EllipticCurvePrivateKey')
 
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
-        return pubkey.verify(signature, data, hash_instance)
+        try:
+            pubkey.verify(signature, data, ec.ECDSA(hash_instance))
+        except exceptions.InvalidSignature:
+            return False
+
+        return True
 
     @staticmethod
     def get_public_key_points(key):

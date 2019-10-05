@@ -1,10 +1,20 @@
 import base64
 import pytest
 
-from xbox.webapi.common.signing import SigningPolicies, SigningAlgorithmId, JwkKeyProvider, JwkKeyContext, ec
+from xbox.webapi.common.signing import SigningPolicies, SigningPolicy, SigningAlgorithmId,\
+                                       JwkKeyProvider, JwkKeyContext, ec
 
 
-def test_signing_assemble_signature(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
+def test_assemble_header(signature_datetime):
+    key_ctx = JwkKeyProvider().get_key(SigningAlgorithmId.ES256)
+
+    policy = SigningPolicy(1, [], 123, [])
+    header_data = key_ctx._assemble_header(policy, signature_datetime)
+
+    assert header_data == b'\x00\x00\x00\x01\x01\xd2\xfc\x4a\x7c\xe0\x00\x00'
+
+
+def test_assemble_signature(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
     http_request = sample_xboxlive_auth_request
     key = JwkKeyProvider.deserialize_der_private_key(secp256r1_der_privkey)
 
@@ -24,7 +34,7 @@ def test_signing_assemble_signature(secp256r1_der_privkey, signature_datetime, s
                                               b'XV0aC54Ym94bGl2ZS5jb20iLCJScHNUaWNrZXQiOiJzb21lVGlja2V0In19AA==')
 
 
-def test_signing_sign_stuff(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
+def test_sign_stuff(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
     algo = SigningAlgorithmId.ES256
 
     provider = JwkKeyProvider()
@@ -44,8 +54,48 @@ def test_signing_sign_stuff(secp256r1_der_privkey, signature_datetime, sample_xb
 
     assert signature == expected
 
-def test_signing_sign_stuff_pub_fail(secp256r1_der_pubkey, signature_datetime, sample_xboxlive_auth_request):
 
+def test_signature_verification(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
+    algo = SigningAlgorithmId.ES256
+
+    provider = JwkKeyProvider()
+
+    key = JwkKeyProvider.deserialize_der_private_key(secp256r1_der_privkey)
+    key_context = provider.import_key(algo, key)
+
+    signature = key_context.create_signature(SigningPolicies.SERVICE_AUTH_XBOXLIVE,
+                                             signature_datetime, sample_xboxlive_auth_request)
+
+    success = key_context.verify_signature(SigningPolicies.SERVICE_AUTH_XBOXLIVE,
+                                           sample_xboxlive_auth_request, signature)
+
+    assert success is True
+
+
+def test_signature_verification_fail(secp256r1_der_privkey, signature_datetime, sample_xboxlive_auth_request):
+    algo = SigningAlgorithmId.ES256
+
+    provider = JwkKeyProvider()
+
+    key = JwkKeyProvider.deserialize_der_private_key(secp256r1_der_privkey)
+    key_context = provider.import_key(algo, key)
+
+    signature = key_context.create_signature(SigningPolicies.SERVICE_AUTH_XBOXLIVE,
+                                             signature_datetime, sample_xboxlive_auth_request)
+
+    signature = bytearray(signature)
+    signature[-1] = 0xFF
+    signature[-2] = 0xFF
+    signature[-3] = 0xFF
+    signature = bytes(signature)
+
+    success = key_context.verify_signature(SigningPolicies.SERVICE_AUTH_XBOXLIVE,
+                                           sample_xboxlive_auth_request, signature)
+
+    assert success is False
+
+
+def test_sign_stuff_pub_fail(secp256r1_der_pubkey, signature_datetime, sample_xboxlive_auth_request):
     algo = SigningAlgorithmId.ES256
 
     provider = JwkKeyProvider()
@@ -58,7 +108,7 @@ def test_signing_sign_stuff_pub_fail(secp256r1_der_pubkey, signature_datetime, s
                                      signature_datetime, sample_xboxlive_auth_request)
 
 
-def test_signing_get_key():
+def test_get_key():
     provider = JwkKeyProvider()
 
     key_ctx = provider.get_key(SigningAlgorithmId.ES256)
@@ -70,7 +120,7 @@ def test_signing_get_key():
     assert key_ctx is key_ctx2
 
 
-def test_signing_get_different_algos():
+def test_get_different_algos():
     provider = JwkKeyProvider()
 
     key_ctx_384 = provider.get_key(SigningAlgorithmId.ES384)
@@ -85,7 +135,7 @@ def test_signing_get_different_algos():
     assert key_ctx_256 is not key_ctx_384
 
 
-def test_signing_key_generation():
+def test_key_generation():
     provider = JwkKeyProvider()
 
     key_256 = provider.generate_jwk_ec(SigningAlgorithmId.ES256)
@@ -107,7 +157,7 @@ def test_signing_key_generation():
     assert key_521.curve.name == 'secp521r1'
 
 
-def test_signing_context_get_proof_key():
+def test_context_get_proof_key():
     provider = JwkKeyProvider()
     key_ctx = provider.get_key(SigningAlgorithmId.ES521)
 
