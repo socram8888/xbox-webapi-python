@@ -7,6 +7,8 @@ Signing for HTTP requests via Elliptic Curve JWK (Json web key)
 import logging
 import struct
 import base64
+import binascii
+import json
 from datetime import datetime
 from enum import Enum
 
@@ -47,6 +49,57 @@ class SigningPolicies(object):
     SERVICE_AUTH_XBOXLIVE = SigningPolicy(1, [], 9223372036854775807, [SigningAlgorithmId.ES256])
     DEVICE_AUTH_XBOXLIVE = SigningPolicy(1, [], 9223372036854775807, [SigningAlgorithmId.ES256])
     XSTS_AUTH_XBOXLIVE = SigningPolicy(1, [], 9223372036854775807, [SigningAlgorithmId.ES256])
+
+
+class JwkUtils(object):
+    # From: https://github.com/latchset/jwcrypto/blob/master/jwcrypto/common.py
+    # Padding stripping versions as described in
+    # RFC 7515 Appendix C
+
+    @staticmethod
+    def base64url_encode(payload):
+        if not isinstance(payload, bytes):
+            payload = payload.encode('utf-8')
+        encode = base64.urlsafe_b64encode(payload)
+        return encode.decode('utf-8').rstrip('=')
+
+    @staticmethod
+    def base64url_decode(payload):
+        size = len(payload) % 4
+        if size == 2:
+            payload += '=='
+        elif size == 3:
+            payload += '='
+        elif size != 0:
+            raise ValueError('Invalid base64 string')
+        return base64.urlsafe_b64decode(payload.encode('utf-8'))
+
+    # JSON encoding/decoding helpers with good defaults
+
+    @staticmethod
+    def json_encode(string):
+        if isinstance(string, bytes):
+            string = string.decode('utf-8')
+        return json.dumps(string, separators=(',', ':'), sort_keys=True)
+
+    @staticmethod
+    def json_decode(string):
+        if isinstance(string, bytes):
+            string = string.decode('utf-8')
+        return json.loads(string)
+
+    @staticmethod
+    def encode_int(i, bit_size=None):
+        extend = 0
+        if bit_size is not None:
+            extend = ((bit_size + 7) // 8) * 2
+        hexi = hex(i).rstrip("L").lstrip("0x")
+        hexl = len(hexi)
+        if extend > hexl:
+            extend -= hexl
+        else:
+            extend = hexl % 2
+        return JwkUtils.base64url_encode(binascii.unhexlify(extend * '0' + hexi))
 
 
 class JwkKeyContext(object):
@@ -368,7 +421,7 @@ class JwkKeyProvider(object):
     def get_proof_key(key, algorithm_id):
         """
         Get proof key by serializing public key to JSON Web Key.
-        Public Key X and Y get URL-safe base64 encoded.
+        Public Key X and Y get URL-safe base64 encoded (RFC 7515 Appendix C).
 
         Args:
             key (ec.EllipticCurvePrivateKey, ec.EllipticCurvePublicKey): Key
@@ -387,8 +440,8 @@ class JwkKeyProvider(object):
             use='sig',
             crv=curve,
             kty=key_type,
-            x=base64.urlsafe_b64encode(pub_x).decode('utf8'),
-            y=base64.urlsafe_b64encode(pub_y).decode('utf8')
+            x=pub_x,
+            y=pub_y
         )
 
         return proof_key
@@ -451,7 +504,7 @@ class JwkKeyProvider(object):
             key (ec.EllipticCurvePrivateKey,ec.EllipticCurvePublicKey): EC key to derive from
 
         Returns:
-            tuple: Tuple of bytes => EC points (x, y)
+            tuple: Tuple of base64url-encoded strings => EC points (x, y)
         """
         if isinstance(key, ec.EllipticCurvePublicKey):
             pubkey = key
@@ -461,14 +514,10 @@ class JwkKeyProvider(object):
             raise TypeError('Invalid key provided!'
                             'Supporting: EllipticCurvePublicKey/EllipticCurvePrivateKey')
 
-        serialized_public = JwkKeyProvider.serialize_der_public_key(pubkey)
+        point_x = JwkUtils.encode_int(pubkey.public_numbers().x)
+        point_y = JwkUtils.encode_int(pubkey.public_numbers().y)
 
-        # Split into X and Y points
-        keylen = len(serialized_public) // 2
-        pub_x = serialized_public[:keylen]
-        pub_y = serialized_public[keylen:]
-
-        return pub_x, pub_y
+        return point_x, point_y
 
     @staticmethod
     def deserialize_der_private_key(keydata, password=None):
