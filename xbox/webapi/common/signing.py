@@ -1,8 +1,7 @@
 """
 HTTP request signing
 
-Generate Elliptic curve for Diffie Hellman key exchange
-to sign token authentication requests.
+Signing for HTTP requests via Elliptic Curve JWK (Json web key)
 """
 
 import logging
@@ -50,15 +49,15 @@ class SigningPolicies(object):
 
 
 class JwkKeyContext(object):
-    def __init__(self, private_key, signing_algorithm):
+    def __init__(self, key, signing_algorithm):
         """
         Initialized
 
         Args:
-            private_key (ec.EllipticCurvePrivateKey): Private key
+            key (ec.EllipticCurvePrivateKey, ec.EllipticCurvePrivateKey): EC key
             signing_algorithm (SigningAlgorithmId): Signing algorithm
         """
-        self._priv_key = private_key
+        self._key = key
         self._algo = signing_algorithm
 
     def get_proof_key(self):
@@ -70,24 +69,11 @@ class JwkKeyContext(object):
             dict: Proof key dict
         """
 
-        pub_x, pub_y = self.get_public_key_points(self._priv_key)
-        curve = JwkKeyProvider.get_curve_name_for_algorithm(self._algo)
-        key_type = JwkKeyProvider.get_key_type_for_algorithm_id(self._algo)
+        return JwkKeyProvider.get_proof_key(self._key, self._algo)
 
-        proof_key = dict(
-            alg=self._algo.name,
-            use='sig',
-            crv=curve,
-            kty=key_type,
-            x=base64.urlsafe_b64encode(pub_x).decode('utf8'),
-            y=base64.urlsafe_b64encode(pub_y).decode('utf8')
-        )
-
-        return proof_key
-
-    def sign_request(self, signing_policy, dt, request):
+    def create_signature(self, signing_policy, dt, request):
         """
-        Create Signature header for authentication request.
+        Create Signature HTTP header for authentication requests.
 
         Args:
             signing_policy (SigningPolicy): Signing policy
@@ -95,15 +81,53 @@ class JwkKeyContext(object):
             request (requests.PreparedRequest): Prepared request
 
         Returns:
-            str: Ready-to-use Signature header value
+            bytes: Signature
         """
-        header = self._assemble_header(signing_policy, dt)
-        payload = self._assemble_signature_data(signing_policy, dt, request.method,
-                                                request.path_url, request.body, request.headers)
+        header = self._assemble_header(signing_policy,
+                                       dt)
+
+        payload = self._assemble_signature_data(signing_policy,
+                                                dt,
+                                                request.method,
+                                                request.path_url,
+                                                request.body,
+                                                request.headers)
 
         final_signature = header + self._sign_signature_data(payload)
+        return final_signature
 
-        return base64.b64encode(final_signature)
+    def verify_signature(self, signing_policy, http_request, signature_data):
+        """
+        Verify incoming signature HTTP header
+
+        Args:
+            signing_policy (SigningPolicy): Signing policy
+            http_request (requests.PreparedRequest): Request that was sent with signature
+            signature_data (bytes): Signature data
+
+        Returns:
+            bool: True if signature was verified, False otherwise
+        """
+        if not isinstance(signature_data, bytes):
+            raise Exception('Invalid signature data (not bytes)')
+
+        signature_header = signature_data[:12]
+        signature_payload = signature_data[12:]
+
+        version, timestamp_dt = self._disassemble_header(signature_header)
+
+        if signing_policy.version != version:
+            return False
+
+        data_to_sign = self._assemble_signature_data(signing_policy,
+                                                     timestamp_dt,
+                                                     http_request.method,
+                                                     http_request.path_url,
+                                                     http_request.body,
+                                                     http_request.headers)
+
+        return JwkKeyProvider.verify_signature(self._key, self._algo,
+                                               signature_payload, data_to_sign)
 
     def _assemble_header(self, policy, dt):
         """
@@ -121,6 +145,21 @@ class JwkKeyContext(object):
         header_data += self.get_timestamp_buffer(dt)
 
         return header_data
+
+    def _disassemble_header(self, data):
+        """
+        Disassemble (plaintext) signature header
+
+        Args:
+            data (bytes): Header data
+
+        Returns:
+            tuple: policy_version, timestamp as datetime
+        """
+        policy_version = self.get_policy_version_from_buffer(data[:4])
+        timestamp_dt = self.get_timestamp_from_buffer(data[4:4+8])
+
+        return policy_version, timestamp_dt
 
     def _assemble_signature_data(self, policy, dt, http_method, http_path_and_query, http_body, http_headers):
         """
@@ -197,7 +236,7 @@ class JwkKeyContext(object):
         Returns:
             bytes: Data signature
         """
-        return self.sign_data(self._priv_key, self._algo, data)
+        return JwkKeyProvider.sign_data(self._key, self._algo, data)
 
     @staticmethod
     def get_policy_version_buffer(version):
@@ -214,6 +253,19 @@ class JwkKeyContext(object):
         return struct.pack('!I', version)
 
     @staticmethod
+    def get_policy_version_from_buffer(data):
+        """
+        Convert policy version bytes to int
+
+        Args:
+            data (bytes): Bytes
+
+        Returns:
+            int: Unpacked policy version
+        """
+        return struct.unpack('!I', data)[0]
+
+    @staticmethod
     def get_timestamp_buffer(dt):
         """
         Get usable buffer from datetime
@@ -227,48 +279,17 @@ class JwkKeyContext(object):
         return struct.pack('!Q', filetime)
 
     @staticmethod
-    def sign_data(private_key, algorithm_id, data):
+    def get_timestamp_from_buffer(data):
         """
-        Sign provided data.
+        Convert timestamp buffer to datetime
 
-        Args:
-            private_key (ec.EllipticCurvePrivateKey): Private key to sign with
-            algorithm_id (SigningAlgorithmId): Used algorithm
-            data (bytes): Data to sign
+        data (bytes): Bytes
 
         Returns:
-            bytes: Data signature
+            datetime: Unpacked timestamp value
         """
-        hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
-        ecdsa = ec.ECDSA(hash_instance)
-        return private_key.sign(data, ecdsa)
-
-    @staticmethod
-    def get_public_key_points(private_key):
-        """
-        Get public key points X and Y
-
-        Args:
-            private_key (ec.EllipticCurvePrivateKey): Private key to derive from
-
-        Returns:
-            tuple: Tuple of bytes => EC points (x, y)
-        """
-        # Get public key obj
-        public_key = private_key.public_key()
-
-        # Serialize public key in DER format
-        serialized_public = public_key.public_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-
-        # Split into X and Y points
-        keylen = len(serialized_public) // 2
-        pub_x = serialized_public[:keylen]
-        pub_y = serialized_public[keylen:]
-
-        return pub_x, pub_y
+        filetime = struct.unpack('!Q', data)[0]
+        return filetimes.filetime_to_dt(filetime)
 
 
 class JwkKeyProvider(object):
@@ -309,19 +330,20 @@ class JwkKeyProvider(object):
 
     def import_key(self, algorithm_id, key):
         """
-        Import existing key context, possibly overwriting existing one
+        Import existing private key, possibly overwriting existing one.
 
         Args:
             algorithm_id (SigningAlgorithmId): Used algorithm Id
-            key(ec.EllipticCurvePrivateKey): Key to import
+            key (ec.EllipticCurvePrivateKey,ec.EllipticCurvePublicKey): Key to import
 
         Returns:
             JwkKeyContext: Context to use for ProofKey generation and signature creation
         """
         if not isinstance(algorithm_id, SigningAlgorithmId):
             raise TypeError('algorithm not of type SigningAlgorithmId')
-        elif not isinstance(key, ec.EllipticCurvePrivateKey):
-            raise TypeError('key not of type ec.EllipticCurvePrivateKey')
+        elif not isinstance(key, ec.EllipticCurvePrivateKey) and \
+                not isinstance(key, ec.EllipticCurvePublicKey):
+            raise TypeError('key not of type ec.EllipticCurvePrivateKey / ec.EllipticCurvePublicKey')
 
         context = JwkKeyContext(key, algorithm_id)
         self.keys[algorithm_id] = context
@@ -340,6 +362,219 @@ class JwkKeyProvider(object):
         """
         curve = JwkKeyProvider.get_curve_instance_for_algorithm(algorithm_id)
         return ec.generate_private_key(curve, default_backend())
+
+    @staticmethod
+    def get_proof_key(key, algorithm_id):
+        """
+        Get proof key by serializing public key to JSON Web Key.
+        Public Key X and Y get URL-safe base64 encoded.
+
+        Args:
+            key (ec.EllipticCurvePrivateKey, ec.EllipticCurvePublicKey): Key
+            algorithm_id (SigningAlgorithmId): Algorithm Id
+
+        Returns:
+            dict: Proof key dict
+        """
+
+        pub_x, pub_y = JwkKeyProvider.get_public_key_points(key)
+        curve = JwkKeyProvider.get_curve_name_for_algorithm(algorithm_id)
+        key_type = JwkKeyProvider.get_key_type_for_algorithm_id(algorithm_id)
+
+        proof_key = dict(
+            alg=algorithm_id.name,
+            use='sig',
+            crv=curve,
+            kty=key_type,
+            x=base64.urlsafe_b64encode(pub_x).decode('utf8'),
+            y=base64.urlsafe_b64encode(pub_y).decode('utf8')
+        )
+
+        return proof_key
+
+    @staticmethod
+    def sign_data(private_key, algorithm_id, data):
+        """
+        Sign provided data.
+
+        Args:
+            private_key (ec.EllipticCurvePrivateKey): Private key to sign with
+            algorithm_id (SigningAlgorithmId): Used algorithm
+            data (bytes): Data to sign
+
+        Returns:
+            bytes: Data signature
+        """
+        hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
+        ecdsa = ec.ECDSA(hash_instance)
+        return private_key.sign(data, ecdsa)
+
+    @staticmethod
+    def verify_signature(key, algorithm_id, signature, data):
+        """
+        Verify signature with provided data via public key
+
+        Args:
+            key (ec.EllipticCurvePrivateKey,ec.EllipticCurvePublicKey): Key to verify data with
+            algorithm_id (SigningAlgorithmId): Used algorithm
+            signature (bytes): Signature to verify
+            data (bytes): Original data which was signed
+
+        Returns:
+            bool: True if signature is valid, False otherwise
+        """
+        if isinstance(key, ec.EllipticCurvePublicKey):
+            pubkey = key
+        elif isinstance(key, ec.EllipticCurvePrivateKey):
+            pubkey = key.public_key()
+        else:
+            raise TypeError('Invalid key provided!'
+                            'Supporting: EllipticCurvePublicKey/EllipticCurvePrivateKey')
+
+        hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
+        return pubkey.verify(signature, data, hash_instance)
+
+    @staticmethod
+    def get_public_key_points(key):
+        """
+        Get public key points X and Y
+
+        Args:
+            key (ec.EllipticCurvePrivateKey,ec.EllipticCurvePublicKey): EC key to derive from
+
+        Returns:
+            tuple: Tuple of bytes => EC points (x, y)
+        """
+        if isinstance(key, ec.EllipticCurvePublicKey):
+            pubkey = key
+        elif isinstance(key, ec.EllipticCurvePrivateKey):
+            pubkey = key.public_key()
+        else:
+            raise TypeError('Invalid key provided!'
+                            'Supporting: EllipticCurvePublicKey/EllipticCurvePrivateKey')
+
+        serialized_public = JwkKeyProvider.serialize_der_public_key(pubkey)
+
+        # Split into X and Y points
+        keylen = len(serialized_public) // 2
+        pub_x = serialized_public[:keylen]
+        pub_y = serialized_public[keylen:]
+
+        return pub_x, pub_y
+
+    @staticmethod
+    def deserialize_der_private_key(keydata, password=None):
+        """
+
+        Args:
+            keydata (bytes):
+            password (bytes):
+
+        Returns:
+            ec.EllipticCurvePrivateKey:
+        """
+        return serialization.load_der_private_key(keydata, password, default_backend())
+
+    @staticmethod
+    def deserialize_der_public_key(keydata):
+        """
+
+        Args:
+            keydata (bytes):
+
+        Returns:
+            ec.EllipticCurvePublicKey:
+        """
+        return serialization.load_der_public_key(keydata, default_backend())
+
+    @staticmethod
+    def deserialize_pem_private_key(keydata, password=None):
+        """
+
+        Args:
+            keydata (bytes):
+            password (bytes):
+
+        Returns:
+            ec.EllipticCurvePrivateKey:
+        """
+        return serialization.load_pem_private_key(keydata, password, default_backend())
+
+    @staticmethod
+    def deserialize_pem_public_key(keydata):
+        """
+
+        Args:
+            keydata (bytes):
+
+        Returns:
+            ec.EllipticCurvePublicKey:
+        """
+        return serialization.load_pem_public_key(keydata, default_backend())
+
+    @staticmethod
+    def serialize_der_public_key(pubkey):
+        """
+        Serialize a public key to DER format
+
+        Args:
+            pubkey (ec.EllipticCurvePublicKey): Public Key
+
+        Returns:
+            bytes: Serialized pubkey
+        """
+        # Serialize public key in DER format
+        return pubkey.public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+    @staticmethod
+    def serialize_der_private_key(privkey):
+        """
+        Serialize a private key to DER format
+
+        Args:
+            privkey (ec.EllipticCurvePrivateKeyWithSerialization): Private Key
+
+        Returns:
+            bytes: Serialized private key
+        """
+        return privkey.private_bytes(serialization.Encoding.DER,
+                                     serialization.PrivateFormat.PKCS8,
+                                     serialization.NoEncryption())
+
+    @staticmethod
+    def serialize_pem_public_key(pubkey):
+        """
+        Serialize a public key to PEM format
+
+        Args:
+            pubkey (ec.EllipticCurvePublicKey): Public Key
+
+        Returns:
+            bytes: Serialized pubkey
+        """
+        # Serialize public key in DER format
+        return pubkey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+    @staticmethod
+    def serialize_pem_private_key(privkey):
+        """
+        Serialize a private key to PEM format
+
+        Args:
+            privkey (ec.EllipticCurvePrivateKeyWithSerialization): Private Key
+
+        Returns:
+            bytes: Serialized private key
+        """
+        return privkey.private_bytes(serialization.Encoding.PEM,
+                                     serialization.PrivateFormat.PKCS8,
+                                     serialization.NoEncryption())
 
     @staticmethod
     def get_hash_instance_for_algorithm(algorithm_id):
@@ -413,8 +648,8 @@ class JwkKeyProvider(object):
             str: Key type
         """
         if algorithm_id == SigningAlgorithmId.ES256 or \
-           algorithm_id == SigningAlgorithmId.ES384 or \
-           algorithm_id == SigningAlgorithmId.ES521:
+                algorithm_id == SigningAlgorithmId.ES384 or \
+                algorithm_id == SigningAlgorithmId.ES521:
             return 'EC'
 
         else:
