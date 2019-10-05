@@ -406,6 +406,9 @@ class JwkKeyProvider(object):
         Returns:
             bytes: Data signature
         """
+        if not isinstance(private_key, ec.EllipticCurvePrivateKey):
+            raise exceptions.InvalidKey('Cannot use other than private key to sign data')
+
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
         return private_key.sign(data, ec.ECDSA(hash_instance))
 

@@ -2,7 +2,7 @@ import base64
 import pytest
 
 from xbox.webapi.common.signing import SigningPolicies, SigningPolicy, SigningAlgorithmId,\
-                                       JwkKeyProvider, JwkKeyContext, ec
+                                       JwkKeyProvider, JwkKeyContext, ec, exceptions
 
 
 def test_assemble_header(signature_datetime):
@@ -49,8 +49,8 @@ def test_sign_stuff(secp256r1_der_privkey, signature_datetime, sample_xboxlive_a
     assert isinstance(signature, bytes)
 
     expected = base64.b64decode(b'AAAAAQHS/Ep84AAAMEYCIQC4rN7knsj/IVHPcK27DNoYw8fOtXRC'
-                                         b'zdM5T3gY/HHwnwIhAKZQ6vEg+WiSzgNSKeIXhCum9TN994Eifmy+'
-                                         b'tbug6vMb')
+                                b'zdM5T3gY/HHwnwIhAKZQ6vEg+WiSzgNSKeIXhCum9TN994Eifmy+'
+                                b'tbug6vMb')
 
     assert signature == expected
 
@@ -103,7 +103,7 @@ def test_sign_stuff_pub_fail(secp256r1_der_pubkey, signature_datetime, sample_xb
     key = JwkKeyProvider.deserialize_der_public_key(secp256r1_der_pubkey)
     key_context = provider.import_key(algo, key)
 
-    with pytest.raises(Exception):
+    with pytest.raises(exceptions.InvalidKey):
         key_context.create_signature(SigningPolicies.SERVICE_AUTH_XBOXLIVE,
                                      signature_datetime, sample_xboxlive_auth_request)
 
