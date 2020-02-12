@@ -11,13 +11,15 @@ import json
 import logging
 import demjson
 import requests
+import base64
 import xml.dom.minidom as minidom
 
+from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
 from xbox.webapi.authentication.token import Token
 from xbox.webapi.authentication.token import AccessToken, RefreshToken, UserToken, DeviceToken, TitleToken, XSTSToken
-from xbox.webapi.common.signing import JwkKeyProvider
+from xbox.webapi.common.signing import JwkKeyProvider, JwkKeyContext, JwkUtils, SigningPolicies, SigningPolicy
 from xbox.webapi.common.exceptions import AuthenticationException, TwoFactorAuthRequired
 from xbox.webapi.common.userinfo import XboxLiveUserInfo
 
@@ -164,16 +166,30 @@ class AuthenticationManager(object):
 
         return requests.Request('GET', base_url, params=params).prepare().url
 
-    def send_request(self, prepared_request, **kwargs):
+    def send_request(self, prepared_request, signing_policy=None, key_ctx=None, **kwargs):
         """
         Send a prepared request
 
         Args:
             prepared_request (requests.PreparedRequest): Prepared request to send
+            signing_policy (SigningPolicy): Signing Policy
+            key_ctx (JwkKeyContext): Key context
 
         Returns:
             requests.Response: Response of HTTP request
         """
+        def sign_request(dt):
+            prepared_request.body = JwkUtils.json_encode(JwkUtils.json_decode(prepared_request.body))
+            prepared_request.headers['Content-Type'] = 'application/json'
+            signature = key_ctx.create_signature(signing_policy, dt, prepared_request)
+            prepared_request.headers['Signature'] = base64.b64encode(signature).decode('utf8')
+            return prepared_request
+
+        if signing_policy and key_ctx:
+            prepared_request = sign_request(datetime.utcnow())
+        elif signing_policy or key_ctx:
+            raise Exception('I need both, signing policy and key context...')
+
         return self.session.send(prepared_request, **kwargs)
 
     def authenticate(self, do_refresh=True):
@@ -207,16 +223,16 @@ class AuthenticationManager(object):
             '''
             TODO: Fix
             # Device Token
-            if ts.device_token and ts.device_token.is_valid:
+            if self.device_token and self.device_token.is_valid:
                 pass
             else:
-                ts.device_token = self._xbox_live_device_auth(ts.access_token)
+                self.device_token = self._xbox_live_device_auth(self.access_token)
 
             # Title Token
-            if ts.title_token and ts.title_token.is_valid:
+            if self.title_token and self.title_token.is_valid:
                 pass
             else:
-                ts.title_token = self._xbox_live_title_auth(ts.device_token, ts.access_token)
+                self.title_token = self._xbox_live_title_auth(self.device_token, self.access_token)
             '''
 
             # XSTS Token
@@ -235,8 +251,8 @@ class AuthenticationManager(object):
             self.user_token = self._xbox_live_authenticate(self.access_token)
             '''
             TODO: Fix
-            ts.device_token = self._xbox_live_device_auth(ts.access_token)
-            ts.title_token = self._xbox_live_title_auth(ts.device_token, ts.access_token)
+            self.device_token = self._xbox_live_device_auth(self.access_token)
+            self.title_token = self._xbox_live_title_auth(self.device_token, self.access_token)
             '''
             self.xsts_token, self.userinfo = self._xbox_live_authorize(self.user_token)
 
@@ -386,7 +402,7 @@ class AuthenticationManager(object):
             AuthenticationException: When provided Access-Token is invalid
 
         Returns:
-            object: If authentication succeeds, returns :class:`UserToken`
+            UserToken: If authentication succeeds, returns :class:`UserToken`
         """
         if not access_token or not access_token.is_valid:
             raise AuthenticationException("No valid AccessToken")
@@ -405,7 +421,7 @@ class AuthenticationManager(object):
              AuthenticationException: When provided Access-Token is invalid
 
          Returns:
-             object: If authentication succeeds, returns :class:`DeviceToken`
+             DeviceToken: If authentication succeeds, returns :class:`DeviceToken`
          """
         if not access_token or not access_token.is_valid:
             raise AuthenticationException("No valid AccessToken")
@@ -426,7 +442,7 @@ class AuthenticationManager(object):
              AuthenticationException: When provided Access-Token is invalid
 
          Returns:
-             object: If authentication succeeds, returns :class:`TitleToken`
+             TitleToken: If authentication succeeds, returns :class:`TitleToken`
          """
         if not access_token or not access_token.is_valid or \
            not device_token or not device_token.is_valid:
@@ -673,6 +689,12 @@ class AuthenticationManager(object):
         Returns:
             requests.Response: Response of HTTP-POST
         """
+
+        signing_policy = SigningPolicies.DEVICE_AUTH_XBOXLIVE
+        signing_algo = signing_policy.supported_algorithms[0]
+
+        self.signkey_provider.get_key(signing_algo)
+
         url = "https://device.auth.xboxlive.com/device/authenticate"
         headers = {"x-xbl-contract-version": "1"}
         data = {
@@ -688,4 +710,4 @@ class AuthenticationManager(object):
         req = requests.Request('POST', url, json=data, headers=headers)
         prepped = self.session.prepare_request(req)
 
-        return self.send_request(prepped)
+        return self.send_request(prepped, signing_policy, key_ctx)

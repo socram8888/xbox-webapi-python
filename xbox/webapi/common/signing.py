@@ -15,7 +15,7 @@ from enum import Enum
 from cryptography import exceptions
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, utils
 from cryptography.hazmat.primitives import serialization
 
 from xbox.webapi.common import filetimes
@@ -46,6 +46,7 @@ class SigningAlgorithmId(Enum):
 
 
 class SigningPolicies(object):
+    SISU_AUTH_XBOXLIVE = SigningPolicy(1, [], 8192, [SigningAlgorithmId.ES256])
     SERVICE_AUTH_XBOXLIVE = SigningPolicy(1, [], 9223372036854775807, [SigningAlgorithmId.ES256])
     DEVICE_AUTH_XBOXLIVE = SigningPolicy(1, [], 9223372036854775807, [SigningAlgorithmId.ES256])
     XSTS_AUTH_XBOXLIVE = SigningPolicy(1, [], 9223372036854775807, [SigningAlgorithmId.ES256])
@@ -60,8 +61,8 @@ class JwkUtils(object):
     def base64url_encode(payload):
         if not isinstance(payload, bytes):
             payload = payload.encode('utf-8')
-        encode = base64.urlsafe_b64encode(payload)
-        return encode.decode('utf-8').rstrip('=')
+        b64_as_bytes = base64.urlsafe_b64encode(payload)
+        return b64_as_bytes.decode('utf-8').rstrip('=')
 
     @staticmethod
     def base64url_decode(payload):
@@ -463,7 +464,11 @@ class JwkKeyProvider(object):
             raise exceptions.InvalidKey('Cannot use other than private key to sign data. Got {}'.format(type(private_key)))
 
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
-        return private_key.sign(data, ec.ECDSA(hash_instance))
+        signature = private_key.sign(data, ec.ECDSA(hash_instance))
+        signature_r, signature_s = utils.decode_dss_signature(signature)
+        signature_hex = '{:064x}{:064x}'.format(signature_r, signature_s)
+        signature_new = binascii.unhexlify(signature_hex)
+        return signature_new
 
     @staticmethod
     def verify_signature(key, algorithm_id, signature, data):
@@ -486,6 +491,16 @@ class JwkKeyProvider(object):
         else:
             raise TypeError('Invalid key provided, got type: {}! '
                             'Supported: EllipticCurvePublicKey/EllipticCurvePrivateKey'.format(type(key)))
+
+        signature_parameter_length = 32
+
+        def hexstring_to_int(hexstring):
+            return int((b'0x' + binascii.hexlify(hexstring)).decode('utf-8'), 16)
+
+        sig_r, sig_s = signature[:signature_parameter_length], signature[signature_parameter_length:]
+        assert len(sig_r) == signature_parameter_length, 'Invalid signature R length: {}'.format(len(sig_r))
+        assert len(sig_s) == signature_parameter_length, 'Invalid signature S length: {}'.format(len(sig_s))
+        signature = utils.encode_dss_signature(hexstring_to_int(sig_r), hexstring_to_int(sig_s))
 
         hash_instance = JwkKeyProvider.get_hash_instance_for_algorithm(algorithm_id)
         try:
