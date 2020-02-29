@@ -166,27 +166,39 @@ class AuthenticationManager(object):
 
         return requests.Request('GET', base_url, params=params).prepare().url
 
-    def send_request(self, prepared_request, signing_policy=None, key_ctx=None, **kwargs):
+    def _sign_request(self, dt, prepared_request, signing_policy, key_ctx):
+        """
+        Sign a request
+
+        Args:
+            dt (datetime): Current datetime
+            prepared_request (requests.PreparedRequest): Prepared request to send
+            signing_policy (SigningPolicy): Signing Policy
+            key_ctx (JwkKeyContext): Key context
+        """
+        prepared_request.body = JwkUtils.json_encode(JwkUtils.json_decode(prepared_request.body))
+        prepared_request.headers['Content-Type'] = 'application/json'
+        signature = key_ctx.create_signature(signing_policy, dt, prepared_request)
+        prepared_request.headers['Signature'] = base64.b64encode(signature).decode('utf8')
+        return prepared_request
+
+    def send_request(self, request, signing_policy=None, key_ctx=None, **kwargs):
         """
         Send a prepared request
 
         Args:
-            prepared_request (requests.PreparedRequest): Prepared request to send
+            prepared_request (requests.Request): Prepared request to send
             signing_policy (SigningPolicy): Signing Policy
             key_ctx (JwkKeyContext): Key context
 
         Returns:
             requests.Response: Response of HTTP request
         """
-        def sign_request(dt):
-            prepared_request.body = JwkUtils.json_encode(JwkUtils.json_decode(prepared_request.body))
-            prepared_request.headers['Content-Type'] = 'application/json'
-            signature = key_ctx.create_signature(signing_policy, dt, prepared_request)
-            prepared_request.headers['Signature'] = base64.b64encode(signature).decode('utf8')
-            return prepared_request
+        prepared_request = self.session.prepare_request(request)
 
         if signing_policy and key_ctx:
-            prepared_request = sign_request(datetime.utcnow())
+            log.debug('Signing request to {}'.format(prepared_request.url))
+            prepared_request = self._sign_request(dt.utcnow(), prepared_request, signing_policy, key_ctx)
         elif signing_policy or key_ctx:
             raise Exception('I need both, signing policy and key context...')
 
@@ -278,16 +290,12 @@ class AuthenticationManager(object):
                                           "before attempting a service authentication")
 
         req = requests.Request('GET', authorization_url)
-        prepped = self.session.prepare_request(req)
-
-        response = self.send_request(prepped, allow_redirects=False)
+        response = self.send_request(req, allow_redirects=False)
         if response.status_code != 302:
             raise AuthenticationException("Failed to authenticate with partner service")
 
         req = requests.Request('GET', response.headers['Location'])
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped)
+        return self.send_request(req)
 
     @staticmethod
     def extract_js_object(body, obj_name):
@@ -498,9 +506,7 @@ class AuthenticationManager(object):
         authorization_url = AuthenticationManager.generate_authorization_url()
 
         req = requests.Request('GET', authorization_url)
-        prepped = self.session.prepare_request(req)
-
-        resp = self.send_request(prepped, allow_redirects=False)
+        resp = self.send_request(req, allow_redirects=False)
 
         if resp.status_code == 302 and \
            resp.headers['Location'].startswith('https://login.live.com/oauth20_desktop.srf'):
@@ -532,9 +538,7 @@ class AuthenticationManager(object):
         }
         req = requests.Request('POST', credential_type_url, json=post_data,
                                headers=dict(Referer=resp.url))
-        prepped = self.session.prepare_request(req)
-
-        resp = self.send_request(prepped)
+        resp = self.send_request(req)
 
         credential_type = resp.json()
 
@@ -561,9 +565,7 @@ class AuthenticationManager(object):
 
         req = requests.Request('POST', server_data.get('urlPost'),
                                data=post_data)
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped, allow_redirects=False)
+        return self.send_request(req, allow_redirects=False)
 
     def __window_live_token_refresh_request(self, refresh_token):
         """
@@ -584,9 +586,7 @@ class AuthenticationManager(object):
         }
 
         req = requests.Request('GET', base_url, params=params)
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped)
+        return self.send_request(req)
 
     def __xbox_live_authenticate_request(self, access_token):
         """
@@ -611,9 +611,7 @@ class AuthenticationManager(object):
         }
 
         req = requests.Request('POST', url, json=data, headers=headers)
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped)
+        return self.send_request(req)
 
     def __xbox_live_authorize_request(self, user_token, device_token=None, title_token=None):
         """
@@ -644,9 +642,7 @@ class AuthenticationManager(object):
             data["Properties"].update({"TitleToken": title_token.jwt})
 
         req = requests.Request('POST', url, json=data, headers=headers)
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped)
+        return self.send_request(req)
 
     def __title_authenticate_request(self, device_token, access_token):
         """
@@ -675,9 +671,7 @@ class AuthenticationManager(object):
         }
 
         req = requests.Request('POST', url, json=data, headers=headers)
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped)
+        return self.send_request(req)
 
     def __device_authenticate_request(self, access_token):
         """
@@ -693,7 +687,7 @@ class AuthenticationManager(object):
         signing_policy = SigningPolicies.DEVICE_AUTH_XBOXLIVE
         signing_algo = signing_policy.supported_algorithms[0]
 
-        self.signkey_provider.get_key(signing_algo)
+        key_ctx = self.signkey_provider.get_key(signing_algo)
 
         url = "https://device.auth.xboxlive.com/device/authenticate"
         headers = {"x-xbl-contract-version": "1"}
@@ -708,6 +702,4 @@ class AuthenticationManager(object):
         }
 
         req = requests.Request('POST', url, json=data, headers=headers)
-        prepped = self.session.prepare_request(req)
-
-        return self.send_request(prepped, signing_policy, key_ctx)
+        return self.send_request(req, signing_policy, key_ctx)
