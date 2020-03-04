@@ -1,6 +1,5 @@
 import os
 import pytest
-from betamax import Betamax
 
 from xbox.webapi.authentication.manager import AuthenticationManager
 from xbox.webapi.common.exceptions import AuthenticationException
@@ -8,24 +7,24 @@ from xbox.webapi.authentication.token import AccessToken, RefreshToken, XSTSToke
 from xbox.webapi.common.userinfo import XboxLiveUserInfo
 
 
-def test_auth_invalid_credentials():
+def test_auth_invalid_credentials(vcr_session):
     auth_manager = AuthenticationManager()
     auth_manager.email_address = "invalid@mail.com"
     auth_manager.password = "abc123"
 
-    with Betamax(auth_manager.session).use_cassette('invalid_auth'):
+    with vcr_session.use_cassette('invalid_auth.json'):
         with pytest.raises(AuthenticationException):
             auth_manager.authenticate()
 
     assert auth_manager.authenticated is False
 
 
-def test_auth_valid_credentials():
+def test_auth_valid_credentials(vcr_session):
     auth_manager = AuthenticationManager()
     auth_manager.email_address = "pyxb-testing@outlook.com"
     auth_manager.password = "password"
 
-    with Betamax(auth_manager.session).use_cassette('full_auth'):
+    with vcr_session.use_cassette('full_auth.json'):
         auth_manager.authenticate(do_refresh=False)
 
     assert auth_manager.authenticated is True
@@ -38,7 +37,7 @@ def test_auth_valid_credentials():
     assert auth_manager.userinfo.gamertag == 'xboxWebapiGamertag'
 
 
-def test_auth_refresh_token():
+def test_auth_refresh_token(vcr_session):
     auth_manager = AuthenticationManager()
     auth_manager.refresh_token = RefreshToken(
         "CuZ*4TX7!SAF33cW*kzdFmgCLPRcz0DtUHFqjQgF726!FG3ScC5yMiDLsJYJ03m4fURrzf3J7X8l6A8mJGhHoRf42aHeJLrtp6wS"
@@ -47,7 +46,7 @@ def test_auth_refresh_token():
         "Ef7oMwzz8c8msv8l95RU*QmtIjdRFd!fYtQctiGLDGs$"
     )
 
-    with Betamax(auth_manager.session).use_cassette('token_refresh'):
+    with vcr_session.use_cassette('token_refresh.json'):
         auth_manager.authenticate(do_refresh=True)
 
     assert auth_manager.authenticated is True
@@ -106,8 +105,8 @@ def test_parsing_redirect_url_fail():
         AuthenticationManager().parse_redirect_url('http://testdomain.com/oauth.srf?lc=1033#no_token')
 
 
-def test_initialize_from_redirect_url(redirect_url):
+def test_initialize_from_redirect_url(vcr_session, redirect_url):
     mgr = AuthenticationManager.from_redirect_url(redirect_url)
 
-    with Betamax(mgr.session).use_cassette('full_auth'):
+    with vcr_session.use_cassette('full_auth.json'):
         mgr.authenticate(do_refresh=False)

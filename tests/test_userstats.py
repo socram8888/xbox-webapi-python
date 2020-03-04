@@ -1,8 +1,5 @@
-from betamax import Betamax
-
-
-def test_userstats_by_scid(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('userstats_by_scid'):
+def test_userstats_by_scid(vcr_session, xbl_client):
+    with vcr_session.use_cassette('userstats_by_scid.json'):
         ret = xbl_client.userstats.get_stats('2669321029139235', '1370999b-fca2-4c53-8ec5-73493bcb67e5')
 
         assert ret.status_code == 200
@@ -18,8 +15,8 @@ def test_userstats_by_scid(xbl_client):
         assert stat['scid'] == '1370999b-fca2-4c53-8ec5-73493bcb67e5'
 
 
-def test_userstats_by_scid_with_metadata(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('userstats_by_scid_with_metadata'):
+def test_userstats_by_scid_with_metadata(vcr_session, xbl_client):
+    with vcr_session.use_cassette('userstats_by_scid_with_metadata.json'):
         ret = xbl_client.userstats.get_stats_with_metadata('2669321029139235', '1370999b-fca2-4c53-8ec5-73493bcb67e5')
 
         assert ret.status_code == 200
@@ -35,8 +32,8 @@ def test_userstats_by_scid_with_metadata(xbl_client):
         assert stat['scid'] == '1370999b-fca2-4c53-8ec5-73493bcb67e5'
 
 
-def test_userstats_batch(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('userstats_batch'):
+def test_userstats_batch(vcr_session, xbl_client):
+    with vcr_session.use_cassette('userstats_batch.json'):
         ret = xbl_client.userstats.get_stats_batch(['2584878536129841'], 1717113201)
 
         assert ret.status_code == 200
@@ -54,8 +51,8 @@ def test_userstats_batch(xbl_client):
         assert stat['scid'] == '00000000-0000-0000-0000-000066591171'
 
 
-def test_userstats_batch_by_scid(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('userstats_batch_by_scid'):
+def test_userstats_batch_by_scid(vcr_session, xbl_client):
+    with vcr_session.use_cassette('userstats_batch_by_scid.json'):
         ret = xbl_client.userstats.get_stats_batch_by_scid(['2669321029139235'], '1370999b-fca2-4c53-8ec5-73493bcb67e5')
 
         assert ret.status_code == 200

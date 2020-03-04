@@ -1,8 +1,5 @@
-from betamax import Betamax
-
-
-def test_achievement_360_all(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('achievements_360_all'):
+def test_achievement_360_all(vcr_session, xbl_client):
+    with vcr_session.use_cassette('achievements_360_all'):
         ret = xbl_client.achievements.\
             get_achievements_xbox360_all('2669321029139235', 1297290392)
 
@@ -12,8 +9,8 @@ def test_achievement_360_all(xbl_client):
         assert len(data['achievements']) == 15
 
 
-def test_achievement_360_earned(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('achievements_360_earned'):
+def test_achievement_360_earned(vcr_session, xbl_client):
+    with vcr_session.use_cassette('achievements_360_earned.json'):
         ret = xbl_client.achievements.\
             get_achievements_xbox360_earned('2669321029139235', 1297290392)
 
@@ -23,8 +20,8 @@ def test_achievement_360_earned(xbl_client):
         assert len(data['achievements']) == 1
 
 
-def test_achievement_360_recent_progress(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('achievements_360_recent_progress'):
+def test_achievement_360_recent_progress(vcr_session, xbl_client):
+    with vcr_session.use_cassette('achievements_360_recent_progress.json'):
         ret = xbl_client.achievements.\
             get_achievements_xbox360_recent_progress_and_info(xuid='2669321029139235')
 
@@ -34,8 +31,8 @@ def test_achievement_360_recent_progress(xbl_client):
         assert len(data['titles']) == 32
 
 
-def test_achievement_one_details(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('achievements_one_details'):
+def test_achievement_one_details(vcr_session, xbl_client):
+    with vcr_session.use_cassette('achievements_one_details.json'):
         ret = xbl_client.achievements.\
             get_achievements_detail_item(xuid='2669321029139235',
                                          service_config_id='1370999b-fca2-4c53-8ec5-73493bcb67e5',
@@ -47,8 +44,8 @@ def test_achievement_one_details(xbl_client):
         assert len(data['achievements']) == 1
 
 
-def test_achievement_one_gameprogress(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('achievements_one_gameprogress'):
+def test_achievement_one_gameprogress(vcr_session, xbl_client):
+    with vcr_session.use_cassette('achievements_one_gameprogress.json'):
         ret = xbl_client.achievements.\
             get_achievements_xboxone_gameprogress(xuid='2669321029139235', title_id=219630713)
 
@@ -58,8 +55,8 @@ def test_achievement_one_gameprogress(xbl_client):
         assert len(data['achievements']) == 32
 
 
-def test_achievement_one_recent_progress(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('achievements_one_recent_progress'):
+def test_achievement_one_recent_progress(vcr_session, xbl_client):
+    with vcr_session.use_cassette('achievements_one_recent_progress.json'):
         ret = xbl_client.achievements.\
             get_achievements_xboxone_recent_progress_and_info(xuid='2669321029139235')
 

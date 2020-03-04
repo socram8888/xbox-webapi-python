@@ -1,8 +1,5 @@
-from betamax import Betamax
-
-
-def test_titlehub_titlehistory(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('titlehub_titlehistory'):
+def test_titlehub_titlehistory(vcr_session, xbl_client):
+    with vcr_session.use_cassette('titlehub_titlehistory.json'):
         ret = xbl_client.titlehub.get_title_history(987654321)
 
         assert ret.status_code == 200
@@ -11,8 +8,8 @@ def test_titlehub_titlehistory(xbl_client):
         assert len(data['titles']) == 5
 
 
-def test_titlehub_titleinfo(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('titlehub_titleinfo'):
+def test_titlehub_titleinfo(vcr_session, xbl_client):
+    with vcr_session.use_cassette('titlehub_titleinfo.json'):
         ret = xbl_client.titlehub.get_title_info(1717113201)
 
         assert ret.status_code == 200
@@ -21,8 +18,8 @@ def test_titlehub_titleinfo(xbl_client):
         assert len(data['titles']) == 1
 
 
-def test_titlehub_batch(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('titlehub_batch'):
+def test_titlehub_batch(vcr_session, xbl_client):
+    with vcr_session.use_cassette('titlehub_batch.json'):
         ret = xbl_client.titlehub.get_titles_batch(
             ['Microsoft.SeaofThieves_8wekyb3d8bbwe', 'Microsoft.XboxApp_8wekyb3d8bbwe']
         )

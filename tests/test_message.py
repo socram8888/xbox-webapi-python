@@ -1,8 +1,5 @@
-from betamax import Betamax
-
-
-def test_message_get_inbox(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('message_get_message_inbox'):
+def test_message_get_inbox(vcr_session, xbl_client):
+    with vcr_session.use_cassette('message_get_message_inbox.json'):
         ret = xbl_client.message.get_message_inbox(skip_items=0, max_items=100)
 
         assert ret.status_code == 200
@@ -22,8 +19,8 @@ def test_message_get_inbox(xbl_client):
         assert header['senderXuid'] == 1234567890123456
 
 
-def test_message_get_message(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('message_get_message'):
+def test_message_get_message(vcr_session, xbl_client):
+    with vcr_session.use_cassette('message_get_message.json'):
         ret = xbl_client.message.get_message('1')
 
         assert ret.status_code == 200
@@ -42,15 +39,15 @@ def test_message_get_message(xbl_client):
         assert header['senderXuid'] == 1234567890123456
 
 
-def test_message_delete_msg(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('message_delete_message'):
+def test_message_delete_msg(vcr_session, xbl_client):
+    with vcr_session.use_cassette('message_delete_message.json'):
         ret = xbl_client.message.delete_message('1')
 
         assert ret.status_code == 204
 
 
-def test_message_send(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('message_send_message'):
+def test_message_send(vcr_session, xbl_client):
+    with vcr_session.use_cassette('message_send_message.json'):
         ret = xbl_client.message.send_message(
             message_text='Test string',
             gamertags=['NoExist1', 'NoExist2']

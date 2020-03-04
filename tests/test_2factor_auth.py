@@ -1,17 +1,16 @@
 import pytest
-from betamax import Betamax
 
 from xbox.webapi.authentication.manager import AuthenticationManager
 from xbox.webapi.common.exceptions import AuthenticationException, TwoFactorAuthRequired
 from xbox.webapi.authentication.two_factor import TwoFactorAuthentication
 
 
-def _do_2fa(cassette_name, strategy_index, proof=None, otc=None):
+def _do_2fa(vcr, cassette_name, strategy_index, proof=None, otc=None):
     auth_manager = AuthenticationManager()
     auth_manager.email_address = 'pyxb-testing@outlook.com'
     auth_manager.password = 'password'
 
-    with Betamax(auth_manager.session).use_cassette(cassette_name):
+    with vcr.use_cassette(cassette_name):
         with pytest.raises(TwoFactorAuthRequired) as excinfo:
             auth_manager.authenticate()
 
@@ -26,8 +25,8 @@ def _do_2fa(cassette_name, strategy_index, proof=None, otc=None):
     return auth_manager
 
 
-def test_email_all_correct():
-    ret = _do_2fa('2fa_email_all_correct',
+def test_email_all_correct(vcr_session):
+    ret = _do_2fa(vcr_session, '2fa_email_all_correct.json',
                   strategy_index=0, proof='pyxb-testing@outlook.com', otc='1379343')
 
     assert ret.access_token.jwt == 'AccessToken'
@@ -36,14 +35,14 @@ def test_email_all_correct():
     assert ret.xsts_token.jwt == 'XSTSToken'
 
 
-def test_email_wrong_mail():
+def test_email_wrong_mail(vcr_session):
     with pytest.raises(AuthenticationException):
-        _do_2fa('2fa_email_wrong_mail',
+        _do_2fa(vcr_session, '2fa_email_wrong_mail.json',
                 strategy_index=0, proof='pyxxx-testing@outlook.com', otc='1234')
 
 
-def test_totp_correct():
-    ret = _do_2fa('2fa_totp_correct',
+def test_totp_correct(vcr_session):
+    ret = _do_2fa(vcr_session, '2fa_totp_correct.json',
                   strategy_index=2, otc='285371')
 
     assert ret.access_token.jwt == 'AccessToken'
@@ -52,14 +51,14 @@ def test_totp_correct():
     assert ret.xsts_token.jwt == 'XSTSToken'
 
 
-def test_totp_wrong_code():
+def test_totp_wrong_code(vcr_session):
     with pytest.raises(AuthenticationException):
-        _do_2fa('2fa_totp_wrong_code',
+        _do_2fa(vcr_session, '2fa_totp_wrong_code.json',
                 strategy_index=2, otc='123456')
 
 
-def test_totp_v2_auth_accept():
-    ret = _do_2fa('2fa_totpv2_accept', strategy_index=3)
+def test_totp_v2_auth_accept(vcr_session):
+    ret = _do_2fa(vcr_session, '2fa_totpv2_accept.json', strategy_index=3)
 
     assert ret.access_token.jwt == 'AccessToken'
     assert ret.refresh_token.jwt == 'RefreshToken'
@@ -67,13 +66,13 @@ def test_totp_v2_auth_accept():
     assert ret.xsts_token.jwt == 'XSTSToken'
 
 
-def test_totp_v2_auth_reject():
+def test_totp_v2_auth_reject(vcr_session):
     with pytest.raises(AuthenticationException):
-        _do_2fa('2fa_totpv2_reject', strategy_index=3)
+        _do_2fa(vcr_session, '2fa_totpv2_reject.json', strategy_index=3)
 
 
-def test_sms_all_correct():
-    ret = _do_2fa('2fa_sms_all_correct',
+def test_sms_all_correct(vcr_session):
+    ret = _do_2fa(vcr_session, '2fa_sms_all_correct.json',
                   strategy_index=1, proof='6842', otc='0135392')
 
     assert ret.access_token.jwt == 'AccessToken'
@@ -82,9 +81,9 @@ def test_sms_all_correct():
     assert ret.xsts_token.jwt == 'XSTSToken'
 
 
-def test_sms_wrong_number():
+def test_sms_wrong_number(vcr_session):
     with pytest.raises(AuthenticationException):
-        _do_2fa('2fa_sms_wrong_number',
+        _do_2fa(vcr_session, '2fa_sms_wrong_number.json',
                 strategy_index=1, proof='9942', otc='123456')
 
 

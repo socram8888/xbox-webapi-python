@@ -1,8 +1,5 @@
-from betamax import Betamax
-
-
-def test_profile_by_xuid(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('usersearch_live_search'):
+def test_profile_by_xuid(vcr_session, xbl_client):
+    with vcr_session.use_cassette('usersearch_live_search.json'):
         ret = xbl_client.usersearch.get_live_search('tux')
 
         assert ret.status_code == 200

@@ -43,7 +43,7 @@ setup(
     setup_requires=['pytest-runner'],
     tests_require=[
         'pytest',
-        'betamax'
+        'vcrpy'
     ],
     extras_require={
         'dev': [
@@ -56,7 +56,7 @@ setup(
             'coverage',
             'Sphinx',
             'twine',
-            'betamax',
+            'vcrpy',
             'pytest',
             'pytest-runner'
         ],

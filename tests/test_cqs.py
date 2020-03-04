@@ -1,8 +1,5 @@
-from betamax import Betamax
-
-
-def test_channel_list_download(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('cqs_get_channel_list'):
+def test_channel_list_download(vcr_session, xbl_client):
+    with vcr_session.use_cassette('cqs_get_channel_list.json'):
         ret = xbl_client.cqs.get_channel_list(
             locale_info='de-DE',
             headend_id='dbd2530a-fcd5-8ff0-b89d-20cd7e021502'
@@ -20,8 +17,8 @@ def test_channel_list_download(xbl_client):
         assert channel['EndDate'] is not None
 
 
-def test_schedule_download(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('cqs_get_schedule'):
+def test_schedule_download(vcr_session, xbl_client):
+    with vcr_session.use_cassette('cqs_get_schedule.json'):
         ret = xbl_client.cqs.get_schedule(
             locale_info='de-DE',
             headend_id='dbd2530a-fcd5-8ff0-b89d-20cd7e021502',

@@ -1,16 +1,25 @@
 import os
 import json
 import pytest
-import betamax
+import vcr
 from datetime import datetime
 from xbox.webapi.api.client import XboxLiveClient
 
 current_dir = os.path.dirname(__file__)
 
-with betamax.Betamax.configure() as config:
-    config.cassette_library_dir = os.path.join(current_dir,
-                                               'data/cassettes')
-    config.default_cassette_options['record_mode'] = 'none'
+
+@pytest.fixture(scope='session')
+def vcr_session():
+    return vcr.VCR(
+        serializer='json',
+        cassette_library_dir=os.path.join(
+            current_dir,
+            'data/cassettes'
+        ),
+        record_mode='none',
+        match_on=['uri', 'method'],
+        decode_compressed_response=False
+    )
 
 
 @pytest.fixture(scope='session')

@@ -1,9 +1,8 @@
-from betamax import Betamax
 from xbox.webapi.api.provider import eds
 
 
-def test_get_details(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('eds_get_details'):
+def test_get_details(vcr_session, xbl_client):
+    with vcr_session.use_cassette('eds_get_details.json'):
         ret = xbl_client.eds.get_details(
             ids=["a3807603-9e22-48b2-8b75-c6bf36ddc511",
                  "e0dec6f3-9e8f-4f0c-a93a-acfba29fd890"],
@@ -16,8 +15,8 @@ def test_get_details(xbl_client):
         assert len(data['Items']) == 2
 
 
-def test_singlemediagroup_search(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('eds_singlemediagroup_search'):
+def test_singlemediagroup_search(vcr_session, xbl_client):
+    with vcr_session.use_cassette('eds_singlemediagroup_search.json'):
         ret = xbl_client.eds.get_singlemediagroup_search(
             search_query='sea',
             max_items=1,
@@ -37,8 +36,8 @@ def test_singlemediagroup_search(xbl_client):
         assert data['Totals'][0]['Name'] == 'GameType'
 
 
-def test_crossmediagroup_search(xbl_client):
-    with Betamax(xbl_client.session).use_cassette('eds_crossmediagroup_search'):
+def test_crossmediagroup_search(vcr_session, xbl_client):
+    with vcr_session.use_cassette('eds_crossmediagroup_search.json'):
         ret = xbl_client.eds.get_crossmediagroup_search(
             search_query='halo',
             max_items=10
