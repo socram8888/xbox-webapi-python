@@ -8,6 +8,7 @@ from requests import Session
 from urllib.parse import urlsplit, urlunsplit
 from xbox.webapi.common.request_signer import RequestSigner
 
+
 class SignedSession(Session):
 
     def __init__(self, request_signer=None):
