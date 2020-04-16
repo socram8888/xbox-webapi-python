@@ -24,7 +24,7 @@ Authentication via credentials or tokens is supported, Two-Factor-Authentication
 Dependencies
 ------------
 * Python >= 3.5
-* Libraries: requests, demjson, appdirs, urwid
+* Libraries: requests, demjson, ecdsa, appdirs, urwid
 
 How to use
 ----------
